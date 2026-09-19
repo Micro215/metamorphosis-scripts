@@ -4,7 +4,7 @@ assets/kubejs/textures/item/varium_geode.png~
 assets/kubejs/textures/item/varium_shard.png~
 client_scripts/mapartClient.js~
 config/manifest~
-config/ver~
+config/ver.txt~
 server_scripts/recipes/avaritiaRecipes.js~
 server_scripts/recipes/ironsSpellRecipes.js~
 server_scripts/recipes/sIngularityRecipes.js~
