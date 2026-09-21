@@ -1,12 +1,13 @@
 StartupEvents.registry("block", event => {
-    event.create("pc", "cardinal")
+    event.create("metamorphosis:disk_drive", "cardinal")
         .blockEntity(be => {
-            be.inventory(9, 1, ["#kubejs:admin_item", "#kubejs:test_item"])
+            be.inventory(9, 1)
             be.enableSync()
         })
-        .displayName("PC")
+        .noDrops()
+        .displayName("<glitch>Otherworldy Disk Drive")
         .soundType("large_amethyst_bud")
-        .hardness(40)
+        .hardness(1.5)
         .resistance(1)
         .requiresTool(false)
 })

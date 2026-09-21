@@ -1,8 +1,22 @@
+function bmoonTheme() {
+    let c = global.ui.color
+    return {
+        ROOT:       c(0x1D1D1DFF),
+        BORDER:     c(0xA3A3A3FF),
+        PANEL:      c(0x101010FF),
+        SLOT:       c(0x060606FF),
+        CONSOLE:    c(0x0B0B0BFF),
+        BUTTON:     c(0x292929FF),
+        HEADER:     c(0xD4D4D4FF),
+        INPUT:      c(0xD9D9D9FF),
+        INPUT_TEXT: c(0xFFFFFFFF)
+    }
+}
+
+// ===== state =====
 global.bmoonData = {
     pages: [
-        {
-            commands: new Array(8).fill("")
-        }
+        { commands: new Array(8).fill("") }
     ],
     variables: [
         { name: "", value: "" },
@@ -19,196 +33,102 @@ global.bmoonCurrentTick = 0
 global.bmoonIsExecuting = false
 global.bmoonLastAction = 0
 
-
 LDLibUI.item("bmoon", event => {
-    let root = new WidgetGroup()
-    root.setSize(280, 360)
-    root.setBackground(new ColorRectTexture(0x1A1A2E))
+    let UI = global.ui
+    let C = bmoonTheme()
 
-    let titleLabel = new LabelWidget()
-    titleLabel.setSelfPosition(85, 8)
-    titleLabel.setText("§8BMoon §7Sequencer")
-    root.addWidgets(titleLabel)
+    let root = UI.root(280, 380, C.ROOT)
 
-    let prevButton = new ButtonWidget()
-    prevButton.setSelfPosition(10, 30)
-    prevButton.setSize(50, 18)
-    prevButton.setButtonTexture(
-        new ColorRectTexture(0x0F3460),
-        new TextTexture("§7Prev")
-    )
+    UI.header(root, 6, 6, 268, C.HEADER, C.BORDER, "§0◈ BMOON SEQUENCER")
 
-    let pageLabel = new LabelWidget()
-    pageLabel.setSelfPosition(70, 30)
-    pageLabel.setText("§7Page " + (global.bmoonData.currentPage + 1) + 
-                        "/" + global.bmoonData.pages.length)
+    UI.dynamicLabel(root, 212, 11, function() {
+        return global.bmoonIsExecuting ? "§2◆ §0RUNNING" : "§8IDLE"
+    })
 
-    let nextButton = new ButtonWidget()
-    nextButton.setSelfPosition(130, 30)
-    nextButton.setSize(50, 18)
-    nextButton.setButtonTexture(
-        new ColorRectTexture(0x0F3460),
-        new TextTexture("§7Next")
-    )
+    // ===== page navigation =====
+    UI.button(root, 6, 30, 60, 18, C.BUTTON, C.BORDER, "§7« PREV", function() {
+        if (!canClick()) return
+        if (global.bmoonData.currentPage > 0) global.bmoonData.currentPage--
+    })
 
-    root.addWidgets(prevButton, pageLabel, nextButton)
+    UI.dynamicLabel(root, 109, 35, function() {
+        return "§7PAGE §f" + (global.bmoonData.currentPage + 1) + "§7/§f" + global.bmoonData.pages.length
+    })
 
-    let commandFields = []
+    UI.button(root, 212, 30, 60, 18, C.BUTTON, C.BORDER, "§7NEXT »", function() {
+        if (!canClick()) return
+        if (global.bmoonData.currentPage < global.bmoonData.pages.length - 1) global.bmoonData.currentPage++
+    })
+
+    // ===== command rows =====
+    UI.label(root, 10, 54, "§7SEQUENCE")
+
     for (let i = 0; i < 8; i++) {
-        let label = new LabelWidget()
-        label.setSelfPosition(10, 55 + i * 22)
-        label.setText("§8" + (i + 1) + ".")
-
-        let field = new TextFieldWidget()
-        field.setSelfPosition(30, 55 + i * 22)
-        field.setSize(240, 20)
-        field.setBordered(true)
-        field.setTextColor(0xFFFFFF)
-        field.setMaxStringLength(256)
-
         let cmdIndex = i
-        field.setTextSupplier(() => {
-            return global.bmoonData.pages[global.bmoonData.currentPage].commands[cmdIndex] || ""
-        })
+        let y = 66 + i * 22
 
-        field.setTextResponder(function(newText) {
-            global.bmoonData.pages[global.bmoonData.currentPage].commands[cmdIndex] = newText
-        })
+        UI.label(root, 10, y + 5, "§7" + (i + 1) + ".")
 
-        commandFields.push(field)
-        root.addWidgets(label, field)
+        UI.field(root, 30, y, 240, 20, C.INPUT, C.INPUT_TEXT, 256,
+            function() {
+                return global.bmoonData.pages[global.bmoonData.currentPage].commands[cmdIndex] || ""
+            },
+            function(newText) {
+                global.bmoonData.pages[global.bmoonData.currentPage].commands[cmdIndex] = newText
+            })
     }
 
-    let varTitle = new LabelWidget()
-    varTitle.setSelfPosition(10, 235)
-    varTitle.setText("§8Variables:")
-    root.addWidgets(varTitle)
+    // ===== variables =====
+    UI.label(root, 10, 248, "§7VARIABLES")
 
-    let varFields = []
     for (let i = 0; i < 4; i++) {
-        let nameLabel = new LabelWidget()
-        nameLabel.setSelfPosition(10, 255 + i * 22)
-        nameLabel.setText("§8Var " + (i + 1) + ":")
-
-        let nameField = new TextFieldWidget()
-        nameField.setSelfPosition(50, 255 + i * 22)
-        nameField.setSize(100, 20)
-        nameField.setBordered(true)
-        nameField.setTextColor(0xFFFFFF)
-        nameField.setMaxStringLength(32)
-
         let varIndex = i
-        nameField.setTextSupplier(() => {
-            return global.bmoonData.variables[varIndex].name || ""
-        })
+        let y = 262 + i * 22
 
-        nameField.setTextResponder(function(newText) {
-            global.bmoonData.variables[varIndex].name = newText
-        })
+        UI.field(root, 10, y, 110, 20, C.INPUT, C.INPUT_TEXT, 32,
+            function() { return global.bmoonData.variables[varIndex].name || "" },
+            function(newText) { global.bmoonData.variables[varIndex].name = newText })
 
-        let valueField = new TextFieldWidget()
-        valueField.setSelfPosition(160, 255 + i * 22)
-        valueField.setSize(110, 20)
-        valueField.setBordered(true)
-        valueField.setTextColor(0xFFFFFF)
-        valueField.setMaxStringLength(128)
+        UI.label(root, 124, y + 5, "§7=")
 
-        valueField.setTextSupplier(() => {
-            return global.bmoonData.variables[varIndex].value || ""
-        })
-
-        valueField.setTextResponder(function(newText) {
-            global.bmoonData.variables[varIndex].value = newText
-        })
-
-        varFields.push({ name: nameField, value: valueField })
-        root.addWidgets(nameLabel, nameField, valueField)
+        UI.field(root, 134, y, 140, 20, C.INPUT, C.INPUT_TEXT, 128,
+            function() { return global.bmoonData.variables[varIndex].value || "" },
+            function(newText) { global.bmoonData.variables[varIndex].value = newText })
     }
 
-    let runButton = new ButtonWidget()
-    runButton.setSelfPosition(10, 335)
-    runButton.setSize(80, 20)
-    runButton.setButtonTexture(
-        new ColorRectTexture(0x0F3460),
-        new TextTexture("§aRun Page")
-    )
+    // ===== actions =====
+    UI.button(root, 6, 356, 84, 18, C.BUTTON, C.BORDER, "§aRUN PAGE", function() {
+        if (!canClick()) return
+        runPage()
+    })
 
-    let clearButton = new ButtonWidget()
-    clearButton.setSelfPosition(100, 335)
-    clearButton.setSize(80, 20)
-    clearButton.setButtonTexture(
-        new ColorRectTexture(0x0F3460),
-        new TextTexture("§cClear")
-    )
+    UI.button(root, 96, 356, 84, 18, C.BUTTON, C.BORDER, "§cCLEAR", function() {
+        if (!canClick()) return
+        global.bmoonData.pages[global.bmoonData.currentPage].commands = new Array(8).fill("")
+    })
 
-    let addButton = new ButtonWidget()
-    addButton.setSelfPosition(190, 335)
-    addButton.setSize(80, 20)
-    addButton.setButtonTexture(
-        new ColorRectTexture(0x0F3460),
-        new TextTexture("§eAdd Page")
-    )
-
-    root.addWidgets(runButton, clearButton, addButton)
-
-    function updateUI() {
-        pageLabel.setText("§7Page " + (global.bmoonData.currentPage + 1) + 
-                        "/" + global.bmoonData.pages.length)
-    }
+    UI.button(root, 186, 356, 86, 18, C.BUTTON, C.BORDER, "§7ADD PAGE", function() {
+        if (!canClick()) return
+        if (global.bmoonData.pages.length < 10) {
+            global.bmoonData.pages.push({ commands: new Array(8).fill("") })
+        }
+    })
 
     function canClick() {
-        if (global.bmoonCurrentTick - global.bmoonLastAction < 2) {
-            return false
-        }
+        if (global.bmoonCurrentTick - global.bmoonLastAction < 2) return false
         global.bmoonLastAction = global.bmoonCurrentTick
         return true
     }
 
-    prevButton.setOnPressCallback(function(clickData) {
-        if (!canClick()) return
-        if (global.bmoonData.currentPage > 0) {
-            global.bmoonData.currentPage--
-            updateUI()
-        }
-    })
+    function runPage() {
+        if (global.bmoonIsExecuting) return
 
-    nextButton.setOnPressCallback(function(clickData) {
-        if (!canClick()) return
-        if (global.bmoonData.currentPage < global.bmoonData.pages.length - 1) {
-            global.bmoonData.currentPage++
-            updateUI()
-        }
-    })
-
-    addButton.setOnPressCallback(function(clickData) {
-        if (!canClick()) return
-        if (global.bmoonData.pages.length < 10) {
-            global.bmoonData.pages.push({
-                commands: new Array(8).fill("")
-            })
-            updateUI()
-        }
-    })
-
-    clearButton.setOnPressCallback(function(clickData) {
-        if (!canClick()) return
-        global.bmoonData.pages[global.bmoonData.currentPage].commands = 
-            new Array(8).fill("")
-    })
-
-    runButton.setOnPressCallback(function(clickData) {
-        if (!canClick()) return
-        if (global.bmoonIsExecuting) {
-            return
-        }
-        
         global.bmoonQueue = []
         global.bmoonNextTick = 0
         global.bmoonIsExecuting = true
 
         let totalCommands = 0
-        let currentPage = global.bmoonData.currentPage
-        let page = global.bmoonData.pages[currentPage]
+        let page = global.bmoonData.pages[global.bmoonData.currentPage]
 
         for (let c = 0; c < page.commands.length; c++) {
             let cmd = page.commands[c]
@@ -224,38 +144,34 @@ LDLibUI.item("bmoon", event => {
                 }
 
                 if (processedCmd.toLowerCase().startsWith("sleep(") && processedCmd.endsWith(")")) {
-                    let secondsStr = processedCmd.substring(6, processedCmd.length - 1)
-                    let seconds = parseFloat(secondsStr) || 1
-                    let ticks = Math.floor(seconds * 20)
-                    global.bmoonQueue.push({ type: 'sleep', ticks: ticks })
+                    let seconds = parseFloat(processedCmd.substring(6, processedCmd.length - 1)) || 1
+                    global.bmoonQueue.push({ type: "sleep", ticks: Math.floor(seconds * 20) })
                 } else {
-                    global.bmoonQueue.push({ type: 'command', command: processedCmd })
+                    global.bmoonQueue.push({ type: "command", command: processedCmd })
                     totalCommands++
                 }
             }
         }
 
-        if (totalCommands === 0) {
-            global.bmoonIsExecuting = false
-            return
-        }
-    })
+        if (totalCommands === 0) global.bmoonIsExecuting = false
+    }
 
     event.success(root)
 })
 
+// ===== execution loop =====
 ClientEvents.tick(event => {
     global.bmoonCurrentTick++
-    
+
     if (!global.bmoonIsExecuting) return
     if (global.bmoonQueue.length === 0) return
-    
+
     if (global.bmoonCurrentTick >= global.bmoonNextTick) {
         let item = global.bmoonQueue.shift()
-        
-        if (item && item.type === 'sleep') {
+
+        if (item && item.type === "sleep") {
             global.bmoonNextTick = global.bmoonCurrentTick + item.ticks
-        } else if (item && item.type === 'command') {
+        } else if (item && item.type === "command") {
             try {
                 Client.runCommand(item.command)
             } catch (e) {
@@ -263,7 +179,7 @@ ClientEvents.tick(event => {
             }
             global.bmoonNextTick = global.bmoonCurrentTick + 5
         }
-        
+
         if (global.bmoonQueue.length === 0) {
             global.bmoonIsExecuting = false
         }
