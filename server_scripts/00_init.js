@@ -1,5 +1,5 @@
 // ============================================================================
-//  Root init — the two global namespaces.
+//  Root init
 // ============================================================================
 if (global.wipe != null) {
     try {
@@ -11,3 +11,9 @@ if (global.wipe != null) {
 
 global.libs = {}
 global.customEvents = {}
+
+// ServerEvents.tick(event => {
+//     if (!global.server) {
+//         global.server = event.server
+//     }
+// })
