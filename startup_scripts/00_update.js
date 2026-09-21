@@ -3,7 +3,6 @@ function checkUpdates() {
     FetchJS.fetch(settings.verLink, data => {
         if (JSIO.read("kubejs/config/ver.txt")[0] !== data) {
             JSIO.findJSInDirectory("kubejs/").forEach(file => {
-                console.log(file)
                 JSIO.delete(file)
             })
             FetchJS.fetch(settings.manifestLink, data => {
