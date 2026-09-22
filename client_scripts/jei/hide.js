@@ -7,6 +7,7 @@ JEIEvents.hideItems(event => {
     event.hide("metamorphosis:computer")
     event.hide("metamorphosis:disk_drive")
     event.hide("metamorphosis:encryption_protocol")
+    event.hide("metamorphosis:communication")
     event.hide("metamorphosis:cable")
     
     event.hide("metamorphosis:floppy_disk_1")
