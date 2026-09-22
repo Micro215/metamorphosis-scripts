@@ -12,23 +12,26 @@ function theme() {
     }
 }
 
-global.mmComputerHistory = []
 global.mmComputerReceive = null
-
+global.mmPocketReceive = null
 global.mmEncryptionLast = "§8◈ awaiting transmission..."
-global.mmEncryptionLines = global.mmEncryptionLast.split("\n")
 global.mmEncryptionReceive = null
+global.mmComputerHistory = {}
+global.mmEncryptionLines = {}
+global.mmNetStatus = {}
 
-// ============================================================
-// computer
-// ============================================================
+global.mmReceiveHub = function(key) {
+    if (global.mmComputerReceive) { try { global.mmComputerReceive(key) } catch (e) {} }
+    if (global.mmPocketReceive) { try { global.mmPocketReceive(key) } catch (e) {} }
+}
+
 LDLibUI.block("computer", event => {
     let UI = global.ui
     let C = theme()
 
     let root = UI.root(280, 228, C.ROOT)
 
-    UI.header(root, 6, 6, 268, C.HEADER, C.BORDER, "§f◈ COMPUTER TERMINAL")
+    UI.statusHeader(root, 6, 6, 268, C.HEADER, C.BORDER, "§f◈ COMPUTER TERMINAL", UI.posKey(event.pos))
 
     let term = UI.terminal(root, {
         x: 6, y: 30, w: 242, h: 170, maxLines: 15,
@@ -42,73 +45,52 @@ LDLibUI.block("computer", event => {
         pos: event.pos,
         colors: C
     })
-    global.mmComputerReceive = term.addLines
+    global.mmComputerReceive = term.receive
 
     event.success(root)
 })
 
-// ============================================================
-// disk drive
-// ============================================================
 LDLibUI.block("disk_drive", event => {
-    let UI = global.ui
-    let C = theme()
-
-    let root = UI.root(210, 194, C.ROOT)
-
-    UI.header(root, 6, 6, 198, C.HEADER, C.BORDER, "§f◈ DISK DRIVE")
-
-    // drive slot (block slot 0)
-    UI.panel(root, 6, 30, 198, 58, C.PANEL, C.BORDER)
-    UI.blockSlots(root, event, 96, 40, 1, 1, C.BORDER, C.SLOT)
-
-    UI.label(root, 60, 64, "§8— INSERT DISK —")
-
-    UI.playerInventory(root, event, 22, 108, C.BORDER, C.PANEL, C.SLOT)
-
-    event.success(root)
+    global.ui.moduleScreen(event, theme(), "disk_drive")
 })
 
-// ============================================================
-// encryption protocol
-// ============================================================
 LDLibUI.block("encryption_protocol", event => {
-    let UI = global.ui
-    let C = theme()
-
-    let root = UI.root(250, 328, C.ROOT)
-
-    UI.header(root, 6, 6, 238, C.HEADER, C.BORDER, "§f◈ ENCRYPTION PROTOCOL")
-
-    let con = UI.console(root, {
-        x: 6, y: 30, w: 210, h: 120, lines: 9,
-        getLines: function() { return global.mmEncryptionLines || [] },
-        upX: 222, upY: 30, btnW: 18, btnH: 18,
-        downX: 222, downY: 132,
-        colors: C
-    })
-    global.mmEncryptionReceive = con.reset
-
-    UI.label(root, 44, 156, "§8◈ PROTOCOL MATRIX")
-    UI.panel(root, 42, 168, 166, 58, C.PANEL, C.BORDER)
-    UI.blockSlots(root, event, 44, 170, 27, 9, C.BORDER, C.SLOT)
-
-    UI.playerInventory(root, event, 42, 242, C.BORDER, C.PANEL, C.SLOT)
-
-    event.success(root)
+    global.ui.moduleScreen(event, theme(), "encryption_protocol")
 })
 
-// ===== network =====
-NetworkEvents.dataReceived("mm_computer_response", function(event) {
+function jsLines(s) {
+    let raw = String(s).split("\n")
+    let out = []
+    for (let i = 0; i < raw.length; i++) out.push(String(raw[i]))
+    return out
+}
+
+function jsPosKey(b) {
+    return Number(b.x) + "," + Number(b.y) + "," + Number(b.z)
+}
+
+NetworkEvents.dataReceived("mm_computer_response", event => {
     global.ui.handleResponse(event, "mmComputerHistory", "mmComputerReceive")
 })
 
-NetworkEvents.dataReceived("mm_encryption_response", function(event) {
+NetworkEvents.dataReceived("mm_encryption_response", event => {
     let payload = event.data
     if (!payload || !payload.data) return
-    if (payload.data.message !== undefined) {
-        global.mmEncryptionLast = String(payload.data.message)
-        global.mmEncryptionLines = global.mmEncryptionLast.split("\n")
-        if (global.mmEncryptionReceive) global.mmEncryptionReceive()
-    }
+    let d = payload.data
+    if (d.message === undefined || !d.block) return
+
+    let key = jsPosKey(d.block)
+    if (!global.mmEncryptionLines || Array.isArray(global.mmEncryptionLines)) global.mmEncryptionLines = {}
+    global.mmEncryptionLines[key] = jsLines(d.message)
+
+    if (global.mmEncryptionReceive) global.mmEncryptionReceive(key)
+})
+
+NetworkEvents.dataReceived("mm_net_status", event => {
+    let payload = event.data
+    if (!payload || !payload.data) return
+    let d = payload.data
+    if (!d.block) return
+    if (!global.mmNetStatus) global.mmNetStatus = {}
+    global.mmNetStatus[jsPosKey(d.block)] = (d.status === undefined ? null : d.status)
 })

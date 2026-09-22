@@ -1,14 +1,14 @@
 function pocketTheme() {
     let c = global.ui.color
     return {
-        ROOT:    c(0xE2E2E8FF), // window background
-        BORDER:  c(0x5C5C66FF), // frames
-        PANEL:   c(0xEFEFF3FF), // panels
-        SLOT:    c(0xF9F9FBFF), // slot background
-        CONSOLE: c(0xF4F4F7FF), // console background
-        BUTTON:  c(0xD6D6DDFF), // button background
-        HEADER:  c(0x2B2B33FF), // dark header
-        INPUT:   c(0x26262EFF)  // dark input strips
+        ROOT:    c(0xE2E2E8FF),
+        BORDER:  c(0x5C5C66FF),
+        PANEL:   c(0xEFEFF3FF),
+        SLOT:    c(0xF9F9FBFF),
+        CONSOLE: c(0xF4F4F7FF),
+        BUTTON:  c(0xD6D6DDFF),
+        HEADER:  c(0x2B2B33FF),
+        INPUT:   c(0x26262EFF)
     }
 }
 
@@ -21,18 +21,38 @@ global.mmPocketVars = [
     { name: "", value: "" }
 ]
 
+global.mmPocketLink = null
+global.mmPocketReceive = null
+
 LDLibUI.item("pocket_computer", event => {
     let UI = global.ui
     let C = pocketTheme()
 
     let root = UI.root(400, 218, C.ROOT)
 
-    UI.header(root, 6, 6, 388, C.HEADER, C.BORDER, "§f◈ POCKET TERMINAL", "§a◆ §7ADMIN")
+    UI.panel(root, 6, 6, 388, 18, C.HEADER, C.BORDER)
+    UI.label(root, 14, 11, "§f◈ POCKET TERMINAL")
+    UI.dynamicLabel(root, 248, 11, function() {
+        let L = global.mmPocketLink
+        if (!L) return "§7◇ no link"
+        if (L.conflict) return "§c◆ CONFLICT"
+        if (!L.hasComms) return "§7◆ net §8#" + L.net + " §7· no comms"
+        return "§a◆ §7net §8#" + L.net
+    })
 
-    // ===== terminal =====
+    Client.player.sendData("mm_pocket_open", { data: {} })
+
+    // placeholder
+    let ph = UI.history("mmComputerHistory", "_pocket")
+    if (ph.length === 0) ph.push("§8◈ no network in range §8(32 blocks)")
+
     let term = UI.terminal(root, {
         x: 6, y: 30, w: 234, h: 160, maxLines: 14,
         historyName: "mmComputerHistory",
+        keySupplier: function() {
+            return (global.mmPocketLink && global.mmPocketLink.master) ? global.mmPocketLink.master : "_pocket"
+        },
+        noEcho: true,
         upX: 240, upY: 30, btnW: 18, btnH: 18,
         downX: 240, downY: 172,
         inputX: 6, inputY: 196, inputW: 204, inputH: 16,
@@ -53,7 +73,7 @@ LDLibUI.item("pocket_computer", event => {
         },
         colors: C
     })
-    global.mmComputerReceive = term.addLines
+    global.mmPocketReceive = term.receive
 
     // ===== variables (right) =====
     UI.panel(root, 262, 30, 132, 160, C.PANEL, C.BORDER)
@@ -75,4 +95,45 @@ LDLibUI.item("pocket_computer", event => {
     UI.label(root, 265, 178, "§8${name} §7/ §8%name%")
 
     event.success(root)
+})
+
+// ===== network =====
+function jsLines(s) {
+    let raw = String(s).split("\n")
+    let out = []
+    for (let i = 0; i < raw.length; i++) out.push(String(raw[i]))
+    return out
+}
+
+NetworkEvents.dataReceived("mm_pocket_net", event => {
+    let payload = event.data
+    if (!payload || !payload.data) return
+    let d = payload.data
+
+    if (!d.master) {
+        global.mmPocketLink = null
+        return
+    }
+
+    global.mmPocketLink = {
+        master: Number(d.master.x) + "," + Number(d.master.y) + "," + Number(d.master.z),
+        net: Number(d.net),
+        hasComms: !!d.hasComms,
+        conflict: !!d.conflict
+    }
+})
+
+NetworkEvents.dataReceived("mm_pocket_response", event => {
+    let payload = event.data
+    if (!payload || !payload.data) return
+    let d = payload.data
+    if (d.error === undefined) return
+
+    let key = (global.mmPocketLink && global.mmPocketLink.master) ? global.mmPocketLink.master : "_pocket"
+    let h = global.ui.history("mmComputerHistory", key)
+    let lines = jsLines(d.error)
+    for (let i = 0; i < lines.length; i++) h.push(lines[i])
+    while (h.length > 100) h.shift()
+
+    if (global.mmReceiveHub) global.mmReceiveHub(key)
 })

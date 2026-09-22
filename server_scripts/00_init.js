@@ -12,8 +12,9 @@ if (global.wipe != null) {
 global.libs = {}
 global.customEvents = {}
 
-// ServerEvents.tick(event => {
-//     if (!global.server) {
-//         global.server = event.server
-//     }
-// })
+PlayerEvents.loggedIn(event => {
+    let pData = event.player.persistentData
+    pData.disableTP = pData.disableTP || false
+    pData.disableUSE = pData.disableUSE || false
+    pData.disableBREAK = pData.disableBREAK || false
+})

@@ -1,9 +1,8 @@
 (function() {
     const UI = global.ui
     const HISTORY_LIMIT = 100
+    const HISTORY_KEYS = 64
 
-    // converts a 0xRRGGBBAA literal into a signed Java int
-    // in the ARGB (0xAARRGGBB) layout expected by ColorRectTexture
     UI.color = function(rgba) {
         let u = rgba < 0 ? rgba + 4294967296 : rgba
         let r = Math.floor(u / 16777216) % 256
@@ -14,7 +13,10 @@
         return argb > 2147483647 ? argb - 4294967296 : argb
     }
 
-    // invokes a single-boolean-parameter method whose name contains substr
+    UI.posKey = function(pos) {
+        return pos.x + "," + pos.y + "," + pos.z
+    }
+
     function invokeBool(obj, substr, value) {
         try {
             let ms = obj.getClass().getMethods()
@@ -30,7 +32,6 @@
         return false
     }
 
-    // disables text shadow; method names differ between LDLib versions
     function tryNoShadow(obj) {
         let names = ["setShadow", "setDropShadow", "setHasShadow", "setDrawShadow"]
         for (let i = 0; i < names.length; i++) {
@@ -49,7 +50,7 @@
         return widget
     }
 
-    // ===== slot binding (LDLib 1.0.x compat) =====
+    // ===== slot binding =====
     UI.enableSlot = function(slot) {
         let putNames = ["setCanPutItems", "canPutItems", "setCanPut", "setCanPutStack", "canPutStack"]
         let putOk = false
@@ -104,7 +105,6 @@
         return out
     }
 
-    // width estimate without § codes, used for right alignment
     UI.textWidth = function(s) {
         return plainText(s).length * 6
     }
@@ -164,13 +164,20 @@
         UI.rect(parent, x - 1, y - 1, w + 2, h + 2, border)
     }
 
-    // title bar: title left, optional right-aligned status text
     UI.header = function(parent, x, y, w, bg, border, title, rightText) {
         UI.panel(parent, x, y, w, 18, bg, border)
         UI.label(parent, x + 8, y + 5, title)
         if (rightText) {
             UI.label(parent, x + w - 8 - UI.textWidth(rightText), y + 5, rightText)
         }
+    }
+
+    UI.statusHeader = function(parent, x, y, w, bg, border, title, statusKey) {
+        UI.panel(parent, x, y, w, 18, bg, border)
+        UI.label(parent, x + 8, y + 5, title)
+        UI.dynamicLabel(parent, x + w - 94, y + 5, function() {
+            return UI.netStatusText(statusKey)
+        })
     }
 
     // ===== slot widgets =====
@@ -184,7 +191,6 @@
         }
     }
 
-    // vanilla Inventory container: hotbar 0-8, main rows 9-35, armor 36-39, offhand 40
     UI.playerInventory = function(root, event, panelX, panelY, border, panelColor, slotColor) {
         UI.label(root, panelX + 2, panelY - 12, "§8Inventory")
         UI.panel(root, panelX, panelY, 166, 80, panelColor, border)
@@ -205,7 +211,6 @@
         }
     }
 
-    // block inventory slots: count items in a cols-wide grid, indices 0..count-1
     UI.blockSlots = function(root, event, x0, y0, count, cols, border, slotColor) {
         let be = event.block ? event.block.entity : null
         let beInv = be ? be.inventory : null
@@ -233,24 +238,121 @@
         }
     }
 
-    // ===== console =====
-    UI.history = function(name) {
-        if (!global[name]) global[name] = []
-        return global[name]
+    // ===== net status =====
+    UI.netStatusText = function(key) {
+        if (!global.mmNetStatus) global.mmNetStatus = {}
+        let s = global.mmNetStatus[key]
+        if (s === undefined) return ""
+        if (s === null) return "§7OFFLINE"
+        if (s.conflict) return "§cCONFLICT"
+        return "§anet §8#" + Number(s.net) + " §8· §0" + Number(s.modules) + " §8mod"
     }
 
-    // broadcast response: appends to the shared history for every client,
-    // resets scroll if the terminal is open
-    UI.handleResponse = function(event, historyName, receiveName) {
+    // ===== modules screen factory =====
+    UI.moduleScreen = function(event, C, name) {
+        let def = global.mmModules ? global.mmModules[name] : null
+        if (!def || !def.ui) return null
+        let ui = def.ui
+
+        let key = UI.posKey(event.pos)
+        let root = UI.root(ui.w, ui.h, C.ROOT)
+
+        let title = "§f◈ " + ui.title
+        if (ui.status) UI.statusHeader(root, 6, 6, ui.w - 12, C.HEADER, C.BORDER, title, key)
+        else UI.header(root, 6, 6, ui.w - 12, C.HEADER, C.BORDER, title)
+        
+        if (ui.note && !ui.console) {
+            UI.label(root, Math.floor((ui.w - UI.textWidth(ui.note)) / 2), 34, ui.note)
+        }
+
+        if (ui.console) {
+            let cc = ui.console
+            let btnW = cc.btnW || 18
+            let btnH = cc.btnH || 18
+
+            let con = UI.console(root, {
+                x: cc.x, y: cc.y, w: cc.w, h: cc.h, lines: cc.lines,
+                getLines: function() {
+                    if (cc.history === "encryption") {
+                        let store = global.mmEncryptionLines
+                        let arr = store ? store[key] : null
+                        if (arr && arr.length > 0) return arr
+                        return global.mmEncryptionLast.split("\n")
+                    }
+                    return []
+                },
+                upX: cc.x + cc.w + 6, upY: cc.y,
+                downX: cc.x + cc.w + 6, downY: cc.y + cc.h - btnH,
+                btnW: btnW, btnH: btnH,
+                colors: C
+            })
+
+            if (cc.history === "encryption") {
+                global.mmEncryptionReceive = function(rkey) {
+                    if (rkey === undefined || rkey === key) con.reset()
+                }
+            }
+        }
+
+        let count = ui.slots || 0
+        if (count > 0) {
+            let cols = ui.slotCols || 1
+            let rows = Math.ceil(count / cols)
+            let gridW = cols * 18
+
+            let captionAbove = ui.slotPanel !== "wide" && ui.slotCaption
+            let panelY = (ui.console ? ui.console.y + ui.console.h + 6 : 30) + (captionAbove ? 12 : 0)
+
+            if (ui.slotPanel === "wide") {
+                UI.panel(root, 6, panelY, ui.w - 12, rows * 18 + 40, C.PANEL, C.BORDER)
+                UI.blockSlots(root, event, Math.floor((ui.w - gridW) / 2), panelY + 10, count, cols, C.BORDER, C.SLOT)
+                if (ui.slotCaption) {
+                    UI.label(root, Math.floor((ui.w - UI.textWidth(ui.slotCaption)) / 2), panelY + 10 + rows * 18 + 6, ui.slotCaption)
+                }
+            } else {
+                let panelW = gridW + 4
+                let panelX = Math.floor((ui.w - panelW) / 2)
+                if (ui.slotCaption) UI.label(root, panelX + 2, panelY - 12, ui.slotCaption)
+                UI.panel(root, panelX, panelY, panelW, rows * 18 + 4, C.PANEL, C.BORDER)
+                UI.blockSlots(root, event, panelX + 2, panelY + 2, count, cols, C.BORDER, C.SLOT)
+            }
+        }
+
+        UI.playerInventory(root, event, Math.floor((ui.w - 166) / 2), ui.h - 86, C.BORDER, C.PANEL, C.SLOT)
+
+        event.success(root)
+        return root
+    }
+
+    // ===== console =====
+    UI.history = function(name, key) {
+        if (!global[name] || Array.isArray(global[name])) global[name] = {}
+        let store = global[name]
+        let k = key === undefined ? "_shared" : key
+        if (!store[k]) {
+            store[k] = []
+            let keys = Object.keys(store)
+            if (keys.length > HISTORY_KEYS) {
+                for (let i = 0; i < keys.length - HISTORY_KEYS; i++) delete store[keys[i]]
+            }
+        }
+        return store[k]
+    }
+
+    UI.handleResponse = function(event, historyName, receiveName, keyField) {
         let payload = event.data
         if (!payload || !payload.data) return
 
         let d = payload.data
 
+        let key = "_shared"
+        let k = d[keyField || "master"]
+        if (k && k.x !== undefined) key = k.x + "," + k.y + "," + k.z
+
         if (d.action === "clear") {
-            global[historyName] = []
+            UI.history(historyName, key).length = 0
             let rcv = global[receiveName]
-            if (rcv) rcv([])
+            if (rcv) rcv(key)
             return
         }
 
@@ -259,23 +361,20 @@
             let parts = String(d.response).split("\n")
             for (let i = 0; i < parts.length; i++) lines.push(parts[i])
         }
-        if (d.error) lines.push(d.error)
+        if (d.error) {
+            let parts = String(d.error).split("\n")
+            for (let i = 0; i < parts.length; i++) lines.push(parts[i])
+        }
         if (lines.length === 0) return
 
-        let history = UI.history(historyName)
+        let history = UI.history(historyName, key)
         for (let i = 0; i < lines.length; i++) history.push(lines[i])
         while (history.length > HISTORY_LIMIT) history.shift()
 
         let rcv = global[receiveName]
-        if (rcv) rcv([])
+        if (rcv) rcv(key)
     }
 
-    // scrollable console: bordered panel, optional caption, dynamic lines
-    // cfg = { x, y, w, h, lines, caption,
-    //         getLines: () -> array of strings,
-    //         upX, upY, downX, downY, btnW, btnH,
-    //         colors: { BORDER, CONSOLE, BUTTON } }
-    // returns { reset }
     UI.console = function(root, cfg) {
         let C = cfg.colors
         UI.panel(root, cfg.x, cfg.y, cfg.w, cfg.h, C.CONSOLE, C.BORDER)
@@ -324,27 +423,22 @@
         return { reset: function() { offset = 0 } }
     }
 
-    // terminal: console + input + send button
-    // cfg = { x, y, w, h, maxLines, historyName,
-    //         upX, upY, downX, downY, btnW, btnH,
-    //         inputX, inputY, inputW, inputH,
-    //         sendX, sendY, sendW, sendH, sendLabel,
-    //         channel, pos, buildPayload, colors }
-    // colors = { BORDER, CONSOLE, BUTTON, INPUT }
-    // buildPayload: (command) -> payload data object, optional;
-    // replaces the default { command, blockPos } payload (item UIs have no pos)
     UI.terminal = function(root, cfg) {
         let C = cfg.colors
+        let keyOf = cfg.keySupplier
+            ? cfg.keySupplier
+            : (cfg.pos
+                ? function() { return UI.posKey(cfg.pos) }
+                : function() { return "_shared" })
 
         let con = UI.console(root, {
             x: cfg.x, y: cfg.y, w: cfg.w, h: cfg.h, lines: cfg.maxLines,
-            getLines: function() { return UI.history(cfg.historyName) },
+            getLines: function() { return UI.history(cfg.historyName, keyOf()) },
             upX: cfg.upX, upY: cfg.upY, downX: cfg.downX, downY: cfg.downY,
             btnW: cfg.btnW, btnH: cfg.btnH,
             colors: C
         })
 
-        // dark strip behind the input, keeps white text readable
         UI.rect(root, cfg.inputX, cfg.inputY, cfg.inputW, cfg.inputH, C.INPUT)
 
         let currentCommand = ""
@@ -371,7 +465,7 @@
         root.addWidget(sendButton)
 
         function addLines(lines) {
-            let history = UI.history(cfg.historyName)
+            let history = UI.history(cfg.historyName, keyOf())
             for (let i = 0; i < lines.length; i++) history.push(lines[i])
             while (history.length > HISTORY_LIMIT) history.shift()
             con.reset()
@@ -380,7 +474,7 @@
         function sendCommand() {
             let command = currentCommand.trim()
             if (command === "") return
-            addLines(["§8» §0" + command])
+            if (!cfg.noEcho) addLines(["§8» §0" + command])
             currentCommand = ""
 
             let payload
@@ -396,13 +490,15 @@
             Client.player.sendData(cfg.channel, { data: payload })
         }
 
-        return { addLines: addLines, reset: con.reset }
+        function receive(key) {
+            let myKey = keyOf()
+            if (key === undefined || key === "_shared" || key === myKey) con.reset()
+        }
+
+        return { addLines: addLines, reset: con.reset, receive: receive }
     }
 
     // ===== controls =====
-
-    // button with frame and label; onClick receives raw clickData
-    // (no isRemote filtering here — the caller decides)
     UI.button = function(parent, x, y, w, h, bg, border, label, onClick) {
         UI.btnFrame(parent, x, y, w, h, border)
         let btn = new ButtonWidget()
@@ -413,8 +509,6 @@
         parent.addWidget(btn)
         return btn
     }
-
-    // text input on a dark strip; supplier/responder bind it to external state
     UI.field = function(parent, x, y, w, h, stripColor, textColor, maxLength, supplier, responder) {
         // UI.rect(parent, x, y, w, h, stripColor)
         let field = new TextFieldWidget()
