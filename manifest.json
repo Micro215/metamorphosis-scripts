@@ -1,0 +1,13 @@
+{
+    "kubejs": {
+        "type": "archive",
+        "mode": "full",
+        "ver": "1.0.0"
+    },
+
+    "mods": {
+        "type": "folder",
+        "mode": "mods",
+        "ver": "1.0.0"
+    }
+}
